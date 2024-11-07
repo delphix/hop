@@ -81,6 +81,16 @@
             <id>apache.website</id>
             <url>${site-repo-url}</url>
         </site>
+        <repository>
+            <id>central</id>
+            <name>3c6d86eebdcd-releases</name>
+            <url>https://artifactory.delphix.com:443/artifactory/masking-maven</url>
+        </repository>
+        <snapshotRepository>
+            <id>snapshots</id>
+            <name>3c6d86eebdcd-snapshots</name>
+            <url>https://artifactory.delphix.com:443/artifactory/masking-maven</url>
+        </snapshotRepository>
     </distributionManagement>
 
 
