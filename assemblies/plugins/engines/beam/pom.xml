@@ -36,12 +36,25 @@
   <repositories>
     <repository>
       <id>central</id>
-      <name>Central Repository</name>
-      <url>https://repo.maven.apache.org/maven2</url>
-      <layout>default</layout>
+      <url>https://artifactory.delphix.com/artifactory/maven-central</url>
+      <name>Maven Central</name>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+    <repository>
+      <id>masking-maven</id>
+      <url>https://artifactory.delphix.com/artifactory/masking-maven</url>
+      <name>Masking Maven</name>
       <snapshots>
         <enabled>true</enabled>
       </snapshots>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
     </repository>
     <repository>
       <id>confluent</id>
