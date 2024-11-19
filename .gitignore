@@ -38,3 +38,5 @@ docs/resources
 docs/node_modules
 docs/.pnp
 docs/.pnp.js
+
+local-snapshots-dir/
