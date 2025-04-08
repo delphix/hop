@@ -193,15 +193,15 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
   /** the rowset for the error rows */
   private IRowSet errorRowSet;
 
-  private AtomicBoolean running;
+  private final AtomicBoolean running;
 
-  private AtomicBoolean stopped;
+  private final AtomicBoolean stopped;
 
   protected AtomicBoolean safeStopped;
 
   private AtomicBoolean paused;
 
-  private boolean init;
+  private final boolean init;
 
   /** the copy number of this thread */
   private int copyNr;
@@ -282,13 +282,13 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
    * The upper buffer size boundary after which we manage the thread priority a little bit to
    * prevent excessive locking
    */
-  private int upperBufferBoundary;
+  private final int upperBufferBoundary;
 
   /**
    * The lower buffer size boundary after which we manage the thread priority a little bit to
    * prevent excessive locking
    */
-  private int lowerBufferBoundary;
+  private final int lowerBufferBoundary;
 
   /** maximum number of errors to allow */
   private Long maxErrors = -1L;
@@ -316,7 +316,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
    */
   private IRowHandler rowHandler;
 
-  private AtomicBoolean markStopped;
+  private final AtomicBoolean markStopped;
 
   /**
    * This is the base transform that forms that basis for all transforms. You can derive from this
@@ -381,8 +381,8 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       linesOutput = 0L;
     }
 
-    inputRowSets = null;
-    outputRowSets = null;
+    inputRowSets = new ArrayList<>();
+    outputRowSets = new ArrayList<>();
     nextTransforms = null;
 
     terminator = transformMeta.hasTerminator();
@@ -418,8 +418,15 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
 
     dispatch();
 
-    upperBufferBoundary = (int) (pipeline.getRowSetSize() * 0.99);
-    lowerBufferBoundary = (int) (pipeline.getRowSetSize() * 0.01);
+    if (pipeline != null) {
+      upperBufferBoundary = (int) (pipeline.getRowSetSize() * 0.99);
+      lowerBufferBoundary = (int) (pipeline.getRowSetSize() * 0.01);
+    } else {
+      upperBufferBoundary = 100;
+      lowerBufferBoundary = 10;
+    }
+
+    setInternalVariables();
   }
 
   @Override
@@ -441,7 +448,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
               .getPartitionSchema()
               .calculatePartitionIds(this);
 
-      if (partitionIdList.size() > 0) {
+      if (!partitionIdList.isEmpty()) {
         String partitionId = partitionIdList.get(partitionNr);
         setVariable(Const.INTERNAL_VARIABLE_TRANSFORM_PARTITION_ID, partitionId);
       } else {
@@ -1023,12 +1030,18 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     // Are we running yet? If not, wait a bit until all threads have been
     // started.
     //
-    if (this.checkPipelineRunning == false) {
+    if (!this.checkPipelineRunning) {
+      int counter = 0;
       while (!pipeline.isRunning() && !stopped.get()) {
         try {
-          Thread.sleep(1);
+          Thread.sleep(1000);
+          counter++;
         } catch (InterruptedException e) {
           // Ignore
+        }
+        // wait 3s max
+        if (counter >= 3) {
+          break;
         }
       }
       this.checkPipelineRunning = true;
@@ -1100,7 +1113,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       // This is the case for non-clustered partitioning...
       //
       List<TransformMeta> nextTransforms = pipelineMeta.findNextTransforms(transformMeta);
-      if (nextTransforms.size() > 0) {
+      if (!nextTransforms.isEmpty()) {
         nextTransformPartitioningMeta = nextTransforms.get(0).getTransformPartitioningMeta();
       }
 
@@ -1287,11 +1300,9 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       }
     }
 
-    // call all row listeners...
-    //
-    for (IRowListener listener : rowListeners) {
-      listener.rowWrittenEvent(rowMeta, row);
-    }
+    // Do not call the row listeners for targeted rows.
+    // It can cause rows with varying layouts to arrive at the same listener without a way to keep
+    // them apart.
 
     // Keep adding to terminator_rows buffer...
     if (terminator && terminatorRows != null) {
@@ -1479,7 +1490,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     // Are we running yet? If not, wait a bit until all threads have been
     // started.
     //
-    if (this.checkPipelineRunning == false) {
+    if (!this.checkPipelineRunning) {
       while (!pipeline.isRunning() && !stopped.get()) {
         try {
           Thread.sleep(1);
@@ -1556,6 +1567,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
           row = inputRowSet.getRowImmediate();
         }
         if (row != null) {
+          obtainInputRowMeta(row, inputRowSet);
           incrementLinesRead();
         }
       } else {
@@ -1567,11 +1579,23 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       // The buffer to grow beyond "a few" entries.
       // We'll only do that if the previous transform has not ended...
 
-      if (!inputRowSet.isDone() && inputRowSet.size() <= lowerBufferBoundary && !isStopped()) {
-        try {
-          Thread.sleep(0, 1);
-        } catch (InterruptedException e) {
-          // Ignore sleep interruption exception
+      if (!isStopped() && row == null) {
+        boolean streamReady = false;
+        // Check each other input stream to see that stream meets the threshold
+        for (int r = 0; r < inputRowSets.size(); r++) {
+          if (inputRowSet.isDone() || inputRowSet.size() > lowerBufferBoundary) {
+            streamReady = true;
+            break;
+          }
+          nextInputStream();
+          inputRowSet = currentInputStream();
+        }
+        if (!streamReady) {
+          try {
+            Thread.sleep(0, 1); // Minimum sleeps vary by OS scheduler, this could be 1ms or more
+          } catch (InterruptedException e) {
+            // Ignore sleep interruption exception
+          }
         }
       }
 
@@ -1588,7 +1612,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       // We can use timeouts to switch from one to another...
       //
       if (waitingTime == null) {
-        waitingTime = DynamicWaitTimes.build(inputRowSets, this::getCurrentInputRowSetNr);
+        waitingTime = DynamicWaitTimes.build(inputRowSets, this::getCurrentInputRowSetNr, 20);
       }
       while (row == null && !isStopped()) {
         // Get a row from the input in row set ...
@@ -1598,6 +1622,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
         row = inputRowSet.getRowWait(waitingTime.get(), TimeUnit.MILLISECONDS);
         boolean timeout = false;
         if (row != null) {
+          obtainInputRowMeta(row, inputRowSet);
           incrementLinesRead();
           blockPointer++;
           waitingTime.reset();
@@ -1632,6 +1657,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
                 inputRowSetsLock.writeLock().unlock();
               }
             } else {
+              obtainInputRowMeta(row, inputRowSet);
               incrementLinesRead();
             }
           } else {
@@ -1660,15 +1686,10 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
         nextInputStream();
         inputRowSet = currentInputStream();
         row = getRowFrom(inputRowSet);
+        obtainInputRowMeta(row, inputRowSet);
       }
     } finally {
       inputRowSetsLock.readLock().unlock();
-    }
-
-    // Also set the meta data on the first occurrence.
-    // or if prevTransforms.length > 1 inputRowMeta can be changed
-    if (inputRowMeta == null || prevTransforms.length > 1) {
-      inputRowMeta = inputRowSet.getRowMeta();
     }
 
     if (row != null) {
@@ -1688,6 +1709,54 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     verifyRejectionRates();
 
     return row;
+  }
+
+  /**
+   * The first non-null row we get we'll lock in the row metadata. For scenarios with multiple
+   * inputs, we move the metadata around (e.g. Merge Rows).
+   *
+   * @param row The input row (not null!)
+   * @param inputRowSet The row set we're reading from right now
+   */
+  private void obtainInputRowMeta(Object[] row, IRowSet inputRowSet) {
+    if (row == null) {
+      return;
+    }
+
+    // Set the row metadata on the first occurrence.
+    // If prevTransforms.length > 1, inputRowMeta can be changed as well.
+    //
+    if (inputRowMeta == null || prevTransforms.length > 1) {
+      inputRowMeta = inputRowSet.getRowMeta();
+    }
+
+    // Extra sanity check
+    //
+    if (inputRowMeta == null) {
+      int nr = 0;
+      for (IRowSet rowSet : inputRowSets) {
+        log.logMinimal(
+            "===> Input row set #"
+                + nr
+                + ", done? "
+                + rowSet.isDone()
+                + ", size="
+                + rowSet.size()
+                + ", metadata? "
+                + (rowSet.getRowMeta() != null));
+        nr++;
+      }
+      log.logMinimal("===> Current input row set nr=" + currentInputRowSetNr);
+
+      throw new RuntimeException(
+          "No row metadata obtained for row "
+              + Arrays.toString(row)
+              + Const.CR
+              + "inputRowSet.getRowMeta()="
+              + inputRowSet.getRowMeta()
+              + ", inputRowSets.size()="
+              + inputRowSets.size());
+    }
   }
 
   /**
@@ -1853,7 +1922,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     // Have all threads started?
     // Are we running yet? If not, wait a bit until all threads have been
     // started.
-    if (this.checkPipelineRunning == false) {
+    if (!this.checkPipelineRunning) {
       while (!pipeline.isRunning() && !stopped.get()) {
         try {
           Thread.sleep(1);
@@ -1869,11 +1938,23 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     // The buffer to grow beyond "a few" entries.
     // We'll only do that if the previous transform has not ended...
 
-    if (!rowSet.isDone() && rowSet.size() <= lowerBufferBoundary && !isStopped()) {
-      try {
-        Thread.sleep(0, 1);
-      } catch (InterruptedException e) {
-        // Ignore sleep interruption exception
+    if (!isStopped()) {
+      boolean streamReady = false;
+      // Check each other input stream to see that stream meets the threshold
+      for (int r = 0; r < inputRowSets.size(); r++) {
+        if (rowSet.isDone() || rowSet.size() > lowerBufferBoundary) {
+          streamReady = true;
+          break;
+        }
+        nextInputStream();
+        rowSet = currentInputStream();
+      }
+      if (!streamReady) {
+        try {
+          Thread.sleep(0, 1); // Minimum sleeps vary by OS scheduler, this could be 1ms or more
+        } catch (InterruptedException e) {
+          // Ignore sleep interruption exception
+        }
       }
     }
 
@@ -1907,7 +1988,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       rowData = rowSet.getRow();
       if (rowData == null) {
         if (waitingTime == null) {
-          waitingTime = DynamicWaitTimes.build(inputRowSets, this::getCurrentInputRowSetNr);
+          waitingTime = DynamicWaitTimes.build(inputRowSets, this::getCurrentInputRowSetNr, 20);
         }
         // Must release the read lock before acquisition of the write lock to prevent deadlocks.
         //
@@ -2170,9 +2251,6 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     inputRowSetsLock.writeLock().lock();
     outputRowSetsLock.writeLock().lock();
     try {
-      inputRowSets = new ArrayList<>();
-      outputRowSets = new ArrayList<>();
-
       errorRowSet = null;
       prevTransforms = new TransformMeta[nrInput];
       nextTransforms = new TransformMeta[nrOutput];
@@ -2723,15 +2801,15 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       Calendar cal = Calendar.getInstance();
       stopTime = cal.getTime();
 
+      // We're finally completely done with this transform.
+      //
+      setRunning(false);
+
       // Here we are completely done with the pipeline.
       // Call all the attached listeners and notify the outside world that the transform has
       // finished.
       //
       fireTransformFinishedListeners();
-
-      // We're finally completely done with this transform.
-      //
-      setRunning(false);
     }
   }
 
