@@ -1579,23 +1579,11 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       // The buffer to grow beyond "a few" entries.
       // We'll only do that if the previous transform has not ended...
 
-      if (!isStopped() && row == null) {
-        boolean streamReady = false;
-        // Check each other input stream to see that stream meets the threshold
-        for (int r = 0; r < inputRowSets.size(); r++) {
-          if (inputRowSet.isDone() || inputRowSet.size() > lowerBufferBoundary) {
-            streamReady = true;
-            break;
-          }
-          nextInputStream();
-          inputRowSet = currentInputStream();
-        }
-        if (!streamReady) {
-          try {
-            Thread.sleep(0, 1); // Minimum sleeps vary by OS scheduler, this could be 1ms or more
-          } catch (InterruptedException e) {
-            // Ignore sleep interruption exception
-          }
+      if (!inputRowSet.isDone() && inputRowSet.size() <= lowerBufferBoundary && !isStopped()) {
+        try {
+          Thread.sleep(0, 1);
+        } catch (InterruptedException e) {
+          // Ignore sleep interruption exception
         }
       }
 
@@ -1938,23 +1926,11 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     // The buffer to grow beyond "a few" entries.
     // We'll only do that if the previous transform has not ended...
 
-    if (!isStopped()) {
-      boolean streamReady = false;
-      // Check each other input stream to see that stream meets the threshold
-      for (int r = 0; r < inputRowSets.size(); r++) {
-        if (rowSet.isDone() || rowSet.size() > lowerBufferBoundary) {
-          streamReady = true;
-          break;
-        }
-        nextInputStream();
-        rowSet = currentInputStream();
-      }
-      if (!streamReady) {
-        try {
-          Thread.sleep(0, 1); // Minimum sleeps vary by OS scheduler, this could be 1ms or more
-        } catch (InterruptedException e) {
-          // Ignore sleep interruption exception
-        }
+    if (!rowSet.isDone() && rowSet.size() <= lowerBufferBoundary && !isStopped()) {
+      try {
+        Thread.sleep(0, 1);
+      } catch (InterruptedException e) {
+        // Ignore sleep interruption exception
       }
     }
 
@@ -2801,15 +2777,15 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       Calendar cal = Calendar.getInstance();
       stopTime = cal.getTime();
 
-      // We're finally completely done with this transform.
-      //
-      setRunning(false);
-
       // Here we are completely done with the pipeline.
       // Call all the attached listeners and notify the outside world that the transform has
       // finished.
       //
       fireTransformFinishedListeners();
+
+      // We're finally completely done with this transform.
+      //
+      setRunning(false);
     }
   }
 
