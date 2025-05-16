@@ -110,6 +110,11 @@ public class ValueMetaBase implements IValueMeta {
 
   public static final String COMPATIBLE_DATE_FORMAT_PATTERN = "yyyy/MM/dd HH:mm:ss.SSS";
 
+  // jleser - Added new usage(discarding because we are already setting "HOP_EMPTY_STRING_DIFFERS_FROM_NULL")
+  //  public static final boolean EMPTY_STRING_AND_NULL_ARE_DIFFERENT = convertStringToBoolean(
+  //          Const.NVL( System.getProperty( Const.KETTLE_EMPTY_STRING_DIFFERS_FROM_NULL, "N" ), "N" ) );
+
+
   protected String name;
   protected int length;
   protected int precision;
@@ -167,6 +172,10 @@ public class ValueMetaBase implements IValueMeta {
   protected boolean originalAutoIncrement;
   protected int originalNullable;
   protected boolean originalSigned;
+
+  // Added for DLPX-46230 / DLPX-82789 to prevent using setBlob on non-blob columns in Oracle
+  protected boolean isLargeObject = false;
+
 
   protected boolean ignoreWhitespace;
 
@@ -4118,11 +4127,7 @@ public class ValueMetaBase implements IValueMeta {
     boolean isStringValue = outValueType == IValueMeta.TYPE_STRING;
     Object emptyValue = isStringValue ? Const.NULL_STRING : null;
 
-    boolean isEmptyAndNullDiffer =
-        convertStringToBoolean(
-            Const.NVL(System.getProperty(Const.HOP_EMPTY_STRING_DIFFERS_FROM_NULL, "N"), "N"));
-
-    if (pol == null && isStringValue && isEmptyAndNullDiffer) {
+    if ( pol == null && isStringValue && emptyStringAndNullAreDifferent ) {
       pol = Const.NULL_STRING;
     }
 
@@ -4681,6 +4686,7 @@ public class ValueMetaBase implements IValueMeta {
       int precision = -1;
       int valtype = IValueMeta.TYPE_NONE;
       boolean isClob = false;
+      isLargeObject = false;
 
       int type = rm.getColumnType(index);
       boolean signed = false;
@@ -5116,6 +5122,32 @@ public class ValueMetaBase implements IValueMeta {
             }
           }
 
+          /*
+           * This logic exists to fix DLPX-51415 (Sybase - Numeric Conversion Error).
+           *
+           * The logic above will typically force DECIMAL/NUMERIC types with a scale ('precision' in Kettle terms) > 0
+           * to be cast to Java Doubles. A Double is a binary type, so it can not exactly represent arbitrary decimal
+           * values.
+           *
+           * This is particularly problematic for Sybase, because Sybase has some inconsistencies related to how it
+           * deals with inserts/updates of values with greater precision than can be held by type of the column, for
+           * instance inserting a value 1.2345 into a column with a type DECIMAL(4,2). For certain combinations of
+           * jTDS/jConnect and batched/non-batched mode, Sybase will throw an error of the form
+           *
+           *      Scale error during implicit conversion of NUMERIC value '1.2345' to a DECIMAL field.
+           *
+           * This causes a problem when the inexact floating point values read from Sybase columns are inserted back
+           * into Sybase NUMERIC/DECIMAL columns. We fix this by reading NUMERIC/DECIMAL values into a Java decimal
+           * type which can store the exact value correctly. We will likely want this behavior for all platforms
+           * eventually, but for now we restrict this behavior to Sybase, in order to minimize the change, and
+           * thereby the risk associated with the patch.
+           */
+          if (databaseMeta.getIDatabase().isSybaseVariant()
+                  && (type == Types.NUMERIC || type == Types.DECIMAL)
+                  && precision > 0) {
+            valtype = IValueMeta.TYPE_BIGNUMBER;
+          }
+
           break;
 
         case Types.TIMESTAMP:
@@ -5153,6 +5185,8 @@ public class ValueMetaBase implements IValueMeta {
 
         case Types.BINARY:
         case Types.BLOB:
+          isLargeObject = true;
+          // fallthrough
         case Types.VARBINARY:
         case Types.LONGVARBINARY:
           valtype = IValueMeta.TYPE_BINARY;
@@ -5167,9 +5201,10 @@ public class ValueMetaBase implements IValueMeta {
           } else if ((databaseMeta.getIDatabase().isOracleVariant())
               && (originalColumnType == Types.VARBINARY
                   || originalColumnType == Types.LONGVARBINARY)) {
-            // set the length for Oracle "RAW" or "LONGRAW" data types
-            valtype = IValueMeta.TYPE_STRING;
-            length = originalColumnDisplaySize;
+            // set the length for Oracle "RAW" or "LONGRAW" data
+            // For DLPX-82789, these type are fundamentally binary and should be treated as such
+            // valtype = IValueMeta.TYPE_STRING;
+            // length = originalColumnDisplaySize;
           } else if (databaseMeta.isMySqlVariant()
               && (originalColumnType == Types.VARBINARY
                   || originalColumnType == Types.LONGVARBINARY)) {
@@ -5246,7 +5281,7 @@ public class ValueMetaBase implements IValueMeta {
           }
           break;
         case IValueMeta.TYPE_BINARY:
-          if (iDatabase.supportsGetBlob()) {
+          if ( isLargeObject && iDatabase.supportsGetBlob()) {
             Blob blob = resultSet.getBlob(index + 1);
             if (blob != null) {
               data = blob.getBytes(1L, (int) blob.length());
@@ -5314,19 +5349,23 @@ public class ValueMetaBase implements IValueMeta {
           }
           break;
         case IValueMeta.TYPE_INTEGER:
-          if (!isNull(data)) {
-            if (databaseMeta.supportsSetLong()) {
+          if (databaseMeta.supportsSetLong()) {
+            if (!isNull(data)) {
               preparedStatement.setLong(index, getInteger(data).longValue());
             } else {
+              preparedStatement.setNull( index, Types.BIGINT );
+            }
+          } else {
+            if (!isNull(data)) {
               double d = getNumber(data).doubleValue();
               if (databaseMeta.supportsFloatRoundingOnUpdate() && getPrecision() >= 0) {
                 preparedStatement.setDouble(index, d);
               } else {
                 preparedStatement.setDouble(index, Const.round(d, getPrecision()));
               }
+            } else {
+              preparedStatement.setNull(index, Types.DOUBLE);
             }
-          } else {
-            preparedStatement.setNull(index, Types.INTEGER);
           }
           break;
         case IValueMeta.TYPE_STRING:
