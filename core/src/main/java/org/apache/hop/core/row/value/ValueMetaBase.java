@@ -110,11 +110,6 @@ public class ValueMetaBase implements IValueMeta {
 
   public static final String COMPATIBLE_DATE_FORMAT_PATTERN = "yyyy/MM/dd HH:mm:ss.SSS";
 
-  // jleser - Added new usage(discarding because we are already setting "HOP_EMPTY_STRING_DIFFERS_FROM_NULL")
-  //  public static final boolean EMPTY_STRING_AND_NULL_ARE_DIFFERENT = convertStringToBoolean(
-  //          Const.NVL( System.getProperty( Const.KETTLE_EMPTY_STRING_DIFFERS_FROM_NULL, "N" ), "N" ) );
-
-
   protected String name;
   protected int length;
   protected int precision;
