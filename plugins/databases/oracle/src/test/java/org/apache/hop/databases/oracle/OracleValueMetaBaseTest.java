@@ -39,6 +39,7 @@ import java.sql.Types;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.Mockito.*;
 
 public class OracleValueMetaBaseTest {
@@ -67,22 +68,22 @@ public class OracleValueMetaBaseTest {
   }
 
   @Test
-  public void testMetadataPreviewSqlVarBinaryToString() throws SQLException, HopDatabaseException {
+  public void testMetadataPreviewSqlVarBinaryNotToString() throws SQLException, HopDatabaseException {
     when(resultSet.getInt("DATA_TYPE")).thenReturn(Types.VARBINARY);
     when(resultSet.getInt("COLUMN_SIZE")).thenReturn(16);
 
     IValueMeta valueMeta = valueMetaBase.getMetadataPreview(variables, databaseMeta, resultSet);
-    assertTrue(valueMeta.isString());
-    assertEquals(16, valueMeta.getLength());
+    assertFalse(valueMeta.isString());
+    assertEquals(-1, valueMeta.getLength());
   }
 
   @Test
-  public void testMetadataPreviewSqlLongVarBinaryToString()
-      throws SQLException, HopDatabaseException {
+  public void testMetadataPreviewSqlLongVarBinaryNotToString()
+          throws SQLException, HopDatabaseException {
     when(resultSet.getInt("DATA_TYPE")).thenReturn(Types.LONGVARBINARY);
 
     IValueMeta valueMeta = valueMetaBase.getMetadataPreview(variables, databaseMeta, resultSet);
-    assertTrue(valueMeta.isString());
+    assertFalse(valueMeta.isString());
   }
 
   @Test

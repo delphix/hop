@@ -318,8 +318,8 @@ public class ValueMetaBaseTest {
             inputValueNullString, inValueMetaString, nullIf, ifNull, trimType);
     assertEquals(
         "HOP_EMPTY_STRING_DIFFERS_FROM_NULL = Y: "
-            + "Conversion from null string must return empty string",
-        StringUtils.EMPTY,
+            + "Conversion from null string must return null",
+        null,
         result);
   }
 
