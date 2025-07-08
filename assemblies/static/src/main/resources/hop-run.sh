@@ -23,7 +23,7 @@ BASEDIR=$(dirname $0)
 cd $BASEDIR
 
 # Compliance Engine customization to add MASKING HOME lib dir to classpath
-ADDITIONAL_CLASSPATH=":lib"
+ADDITIONAL_CLASSPATH=":lib:$MASKING_DATA/resources/jarfiles/db2jcc_license_cisuz.jar"
 
 # set java primary is HOP_JAVA_HOME fallback to JAVA_HOME or default java
 if [ -n "$HOP_JAVA_HOME" ]; then
