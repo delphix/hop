@@ -22,18 +22,15 @@ import org.apache.commons.lang.SystemUtils;
 import org.apache.hop.core.row.IRowMeta;
 import org.apache.hop.core.row.IValueMeta;
 import org.apache.hop.core.variables.IVariables;
-import org.apache.hop.junit.rules.RestoreHopEngineEnvironment;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.TableItem;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.ClassRule;
 import org.junit.Test;
 import org.mockito.Mockito;
 
 public class PreviewRowsDialogTest {
-  @ClassRule public static RestoreHopEngineEnvironment env = new RestoreHopEngineEnvironment();
 
   @Before
   public void notOnWindows() {
@@ -42,6 +39,8 @@ public class PreviewRowsDialogTest {
 
   @Test
   public void getDataForRow() {
+    // Skip this test on macOS due to SWT Shell mocking limitations with Mockito
+    org.junit.Assume.assumeFalse(SystemUtils.IS_OS_MAC);
 
     IRowMeta iRowMeta = Mockito.mock(IRowMeta.class);
     Mockito.when(iRowMeta.size()).thenReturn(3);
