@@ -419,8 +419,8 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
     dispatch();
 
     if (pipeline != null) {
-      upperBufferBoundary = (int) (pipeline.getRowSetSize() * 0.99);
-      lowerBufferBoundary = (int) (pipeline.getRowSetSize() * 0.01);
+      upperBufferBoundary = (int) (pipeline.getRowSetSize() * 0.999);
+      lowerBufferBoundary = (int) (pipeline.getRowSetSize() * 0.001);
     } else {
       upperBufferBoundary = 100;
       lowerBufferBoundary = 10;
