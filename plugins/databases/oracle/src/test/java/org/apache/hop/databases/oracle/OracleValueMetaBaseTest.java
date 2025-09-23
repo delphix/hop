@@ -18,6 +18,7 @@
 package org.apache.hop.databases.oracle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -69,21 +70,21 @@ class OracleValueMetaBaseTest {
   }
 
   @Test
-  void testMetadataPreviewSqlVarBinaryToString() throws SQLException, HopDatabaseException {
+  void testMetadataPreviewSqlVarBinaryNotToString() throws SQLException, HopDatabaseException {
     when(resultSet.getInt("DATA_TYPE")).thenReturn(Types.VARBINARY);
     when(resultSet.getInt("COLUMN_SIZE")).thenReturn(16);
 
     IValueMeta valueMeta = valueMetaBase.getMetadataPreview(variables, databaseMeta, resultSet);
-    assertTrue(valueMeta.isString());
-    assertEquals(16, valueMeta.getLength());
+    assertFalse(valueMeta.isString());
+    assertEquals(-1, valueMeta.getLength());
   }
 
   @Test
-  void testMetadataPreviewSqlLongVarBinaryToString() throws SQLException, HopDatabaseException {
+  void testMetadataPreviewSqlLongVarBinaryNotToString() throws SQLException, HopDatabaseException {
     when(resultSet.getInt("DATA_TYPE")).thenReturn(Types.LONGVARBINARY);
 
     IValueMeta valueMeta = valueMetaBase.getMetadataPreview(variables, databaseMeta, resultSet);
-    assertTrue(valueMeta.isString());
+    assertFalse(valueMeta.isString());
   }
 
   @Test
