@@ -119,6 +119,8 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
 
   private int rowlimit;
   private int commitsize;
+  private boolean delphixSpecial = false;
+  private int fetchSize = 0;
 
   private Connection connection;
 
@@ -655,6 +657,23 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
    * @param commsize The number of rows to wait before doing a commit on the connection.
    */
   public void setCommit(int commsize) {
+    /*
+     * We override this method to set fetch size in the case where it was called
+     * previously with a "magic" value. It would be much cleaner to just add a
+     * setFetchSize() method, but the way we build dms-core-gate, changes here
+     * aren't visible to link against when building our code.
+     */
+    if (commsize == Integer.MIN_VALUE + 42) {
+      delphixSpecial = true;
+      return;
+    }
+    if (delphixSpecial) {
+      fetchSize = commsize;
+      delphixSpecial = false;
+      return;
+    }
+    // End Delphix extra-special case.
+
     commitsize = commsize;
     String onOff = (commitsize <= 0 ? "on" : "off");
     try {
@@ -1119,7 +1138,8 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
           && databaseMeta.supportsBatchUpdates()
           && Utils.isEmpty(connectionGroup);
     } catch (SQLException e) {
-      throw createHopDatabaseBatchException("Error determining whether to use batch", e);
+      throw createHopDatabaseBatchException(
+          "Error determining whether to use batch", e, this.log.getLogLevel());
     }
   }
 
@@ -1186,10 +1206,11 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
 
       return rowsAreSafe;
     } catch (BatchUpdateException ex) {
-      throw createHopDatabaseBatchException(CONST_ERROR_UPDATING_BATCH, ex);
+      throw createHopDatabaseBatchException(CONST_ERROR_UPDATING_BATCH, ex, this.log.getLogLevel());
     } catch (SQLException ex) {
       if (isBatchUpdate) {
-        throw createHopDatabaseBatchException(CONST_ERROR_UPDATING_BATCH, ex);
+        throw createHopDatabaseBatchException(
+            CONST_ERROR_UPDATING_BATCH, ex, this.log.getLogLevel());
       } else {
         throw new HopDatabaseException("Error inserting/updating row", ex);
       }
@@ -1299,7 +1320,12 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
 
   public static HopDatabaseBatchException createHopDatabaseBatchException(
       String message, SQLException ex) {
-    HopDatabaseBatchException kdbe = new HopDatabaseBatchException(message, ex);
+    return createHopDatabaseBatchException(message, ex, DefaultLogLevel.getLogLevel());
+  }
+
+  public static HopDatabaseBatchException createHopDatabaseBatchException(
+      String message, SQLException ex, LogLevel logLevel1) {
+    HopDatabaseBatchException kdbe = new HopDatabaseBatchException(message, ex, logLevel1);
     if (ex instanceof BatchUpdateException batchUpdateException) {
       kdbe.setUpdateCounts(batchUpdateException.getUpdateCounts());
     } else {
@@ -1546,13 +1572,13 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
 
         if (canWeSetFetchSize(pstmt)) {
           int maxRows = pstmt.getMaxRows();
-          int fs = Const.FETCH_SIZE <= maxRows ? maxRows : Const.FETCH_SIZE;
+          int fs = Math.max(maxRows, fetchSize > 0 ? fetchSize : Const.FETCH_SIZE);
           if (databaseMeta.isMySqlVariant()) {
             setMysqlFetchSize(pstmt, fs, maxRows);
           } else {
             pstmt.setFetchSize(fs);
           }
-
+          log.logBasic("Statement fetch size set to " + fs);
           pstmt.setFetchDirection(fetchMode);
         }
 
@@ -1568,13 +1594,14 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
         selStmt = connection.createStatement();
         log.snap(Metrics.METRIC_DATABASE_CREATE_SQL_STOP, databaseMeta.getName());
         if (canWeSetFetchSize(selStmt)) {
-          int fs =
-              Const.FETCH_SIZE <= selStmt.getMaxRows() ? selStmt.getMaxRows() : Const.FETCH_SIZE;
+          int fs = Math.max(selStmt.getMaxRows(), fetchSize > 0 ? fetchSize : Const.FETCH_SIZE);
           if (databaseMeta.getIDatabase().isMySqlVariant() && databaseMeta.isStreamingResults()) {
             selStmt.setFetchSize(Integer.MIN_VALUE);
           } else {
             selStmt.setFetchSize(fs);
           }
+          log.logBasic("Statement fetch size set to " + fs);
+
           selStmt.setFetchDirection(fetchMode);
         }
         if (rowlimit > 0 && databaseMeta.supportsSetMaxRows()) {
@@ -1604,10 +1631,16 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
   }
 
   private boolean canWeSetFetchSize(Statement statement) throws SQLException {
-    return databaseMeta.isFetchSizeSupported()
-        && (statement.getMaxRows() > 0
-            || databaseMeta.getIDatabase().isPostgresVariant()
-            || (databaseMeta.isMySqlVariant() && databaseMeta.isStreamingResults()));
+    if (!databaseMeta.isFetchSizeSupported()) {
+      return false;
+    }
+    // Override for delphix
+    if (fetchSize > 0) {
+      return true;
+    }
+    return statement.getMaxRows() > 0
+        || databaseMeta.getIDatabase().isPostgresVariant()
+        || (databaseMeta.isMySqlVariant() && databaseMeta.isStreamingResults());
   }
 
   public ResultSet openQuery(PreparedStatement ps, IRowMeta params, Object[] data)
@@ -1622,9 +1655,13 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
       setValues(params, data, ps); // set the parameters!
       log.snap(Metrics.METRIC_DATABASE_SQL_VALUES_STOP, databaseMeta.getName());
 
+      if (rowlimit > 0 && databaseMeta.supportsSetMaxRows()) {
+        ps.setMaxRows(rowlimit);
+      }
+
       if (canWeSetFetchSize(ps)) {
         int maxRows = ps.getMaxRows();
-        int fs = Const.FETCH_SIZE <= maxRows ? maxRows : Const.FETCH_SIZE;
+        int fs = Math.max(maxRows, fetchSize > 0 ? fetchSize : Const.FETCH_SIZE);
         // mysql have some restriction on fetch size assignment
         if (databaseMeta.isMySqlVariant()) {
           setMysqlFetchSize(ps, fs, maxRows);
@@ -1632,12 +1669,9 @@ public class Database implements IVariables, ILoggingObject, AutoCloseable {
           // other databases seems not.
           ps.setFetchSize(fs);
         }
+        log.logBasic("Statement fetch size set to " + fs);
 
         ps.setFetchDirection(ResultSet.FETCH_FORWARD);
-      }
-
-      if (rowlimit > 0 && databaseMeta.supportsSetMaxRows()) {
-        ps.setMaxRows(rowlimit);
       }
 
       log.snap(Metrics.METRIC_DATABASE_EXECUTE_SQL_START, databaseMeta.getName());

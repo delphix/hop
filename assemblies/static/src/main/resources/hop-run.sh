@@ -22,6 +22,9 @@ ORIGINDIR=$(pwd)
 BASEDIR=$(dirname "$0")
 cd "${BASEDIR}" || exit 1
 
+# Compliance Engine customization to add MASKING HOME lib dir to classpath
+ADDITIONAL_CLASSPATH=":lib:$MASKING_DATA/resources/jarfiles/db2jcc_license_cisuz.jar"
+
 # set java primary is HOP_JAVA_HOME fallback to JAVA_HOME or default java
 if [ -n "${HOP_JAVA_HOME}" ]; then
   _HOP_JAVA="${HOP_JAVA_HOME}/bin/java"
@@ -91,7 +94,7 @@ Darwin)
   ;;
 esac
 
-"${_HOP_JAVA}" ${HOP_OPTIONS} -Djava.library.path="${LIBPATH}" -classpath "${CLASSPATH}" org.apache.hop.run.HopRun "$@"
+"${_HOP_JAVA}" ${HOP_OPTIONS} -Djava.library.path="${LIBPATH}" -classpath "${CLASSPATH}${ADDITIONAL_CLASSPATH}" org.apache.hop.run.HopRun "$@"
 EXITCODE=$?
 
 cd "${ORIGINDIR}" || exit 1

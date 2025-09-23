@@ -22,6 +22,9 @@ ORIGINDIR=$(pwd)
 BASEDIR=$(dirname "$0")
 cd "${BASEDIR}" || exit 1
 
+# Compliance Engine customization to add MASKING HOME lib dir to classpath
+ADDITIONAL_CLASSPATH=":lib"
+
 # set java primary is HOP_JAVA_HOME fallback to JAVA_HOME or default java
 if [ -n "${HOP_JAVA_HOME}" ]; then
   _HOP_JAVA="${HOP_JAVA_HOME}/bin/java"
@@ -109,7 +112,7 @@ Darwin)
 esac
 CLASSPATH="lib/core/*:lib/beam/*:lib/swt/$os_path/$arch_path/*"
 
-"${_HOP_JAVA}" ${HOP_OPTIONS} -Djava.library.path="${LIBPATH}" -classpath "${CLASSPATH}" org.apache.hop.ui.hopgui.HopGui "$@"
+"${_HOP_JAVA}" ${HOP_OPTIONS} -Djava.library.path="${LIBPATH}" -classpath "${CLASSPATH}${ADDITIONAL_CLASSPATH}" org.apache.hop.ui.hopgui.HopGui "$@"
 EXITCODE=$?
 
 cd "${ORIGINDIR}" || exit 1

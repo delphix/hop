@@ -55,7 +55,6 @@ import org.apache.hop.core.row.IRowMeta;
 import org.apache.hop.core.row.IValueMeta;
 import org.apache.hop.core.row.RowDataUtil;
 import org.apache.hop.core.row.value.ValueMetaBase;
-import org.apache.hop.core.util.EnvUtil;
 import org.apache.hop.core.util.Utils;
 import org.apache.hop.core.variables.IVariables;
 import org.apache.hop.core.variables.Variables;
@@ -1632,13 +1631,7 @@ public class BaseTransform<Meta extends ITransformMeta, Data extends ITransformD
       // We can use timeouts to switch from one to another...
       //
       if (waitingTime == null) {
-        Integer waitTime =
-            Const.toInt(EnvUtil.getSystemProperty(Const.HOP_DEFAULT_BUFFER_POLLING_WAITTIME), 20);
-        if (pipeline.getPipelineRunConfiguration().getEngineRunConfiguration()
-            instanceof LocalPipelineRunConfiguration runconfig) {
-          waitTime = Const.toInt(runconfig.getWaitTime(), waitTime);
-        }
-        waitingTime = DynamicWaitTimes.build(inputRowSets, this::getCurrentInputRowSetNr, waitTime);
+        waitingTime = DynamicWaitTimes.build(inputRowSets, this::getCurrentInputRowSetNr, 20);
       }
       while (row == null && !isStopped()) {
         // Get a row from the input in row set ...
