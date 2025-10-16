@@ -725,6 +725,7 @@
             <plugin>
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
+                <version>0.13</version>
                 <configuration>
                     <excludeSubProjects>false</excludeSubProjects>
                     <consoleOutput>true</consoleOutput>
