@@ -272,7 +272,9 @@ public class RowMeta implements IRowMeta {
           newMeta = renameValueMetaIfInRow(meta, null);
         }
         valueMetaList.add(index, newMeta);
-        cache.invalidate();
+        // If data is inserted at the index position, the subsequent data will be moved one step
+        // backwards.
+        cache.insertAtMapping(newMeta.getName(), index);
         needRealClone = null;
       } finally {
         lock.writeLock().unlock();
@@ -1303,6 +1305,17 @@ public class RowMeta implements IRowMeta {
         mapping.remove(old.toLowerCase());
       }
       storeMapping(current, index);
+    }
+
+    void insertAtMapping(String name, int index) {
+      if (Utils.isEmpty(name) || index < 0) {
+        return;
+      }
+
+      String key = name.toLowerCase();
+      // For all values that are greater than or equal to the index, increment them by 1.
+      mapping.replaceAll((k, v) -> v >= index ? v + 1 : v);
+      mapping.put(key, index);
     }
 
     Integer findAndCompare(String name, List<? extends IValueMeta> metas) {
