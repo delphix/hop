@@ -18,10 +18,23 @@
 package org.apache.hop.core;
 
 import static org.apache.hop.core.Condition.Function;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.apache.hop.core.exception.HopValueException;
 import org.apache.hop.core.row.IRowMeta;
+import org.apache.hop.core.row.IValueMeta;
 import org.apache.hop.core.row.RowMeta;
 import org.apache.hop.core.row.ValueMetaAndData;
 import org.apache.hop.core.row.value.ValueMetaInteger;
@@ -81,6 +94,135 @@ public class ConditionTest {
 
     condition = new Condition(left, Function.SMALLER_EQUAL, null, rightExact);
     assertFalse(condition.evaluate(rowMeta1, new Object[] {null, "test"}));
+  }
+
+  @Test
+  public void testConstantRightValueStaysCorrectAcrossRows() throws Exception {
+    IRowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta(new ValueMetaInteger("name1"));
+
+    ValueMetaAndData rightExact = new ValueMetaAndData(new ValueMetaInteger("name1"), 10000L);
+    Condition condition = new Condition("name1", Function.SMALLER, null, rightExact);
+
+    // The right value is built once and then shared, so repeated evaluation must not drift.
+    assertTrue(condition.evaluate(rowMeta, new Object[] {5000L}));
+    assertFalse(condition.evaluate(rowMeta, new Object[] {15000L}));
+    assertTrue(condition.evaluate(rowMeta, new Object[] {9999L}));
+    assertFalse(condition.evaluate(rowMeta, new Object[] {10000L}));
+  }
+
+  @Test
+  public void testConstantRightValueIsBuiltOnlyOnce() throws Exception {
+    IRowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta(new ValueMetaInteger("name1"));
+
+    ValueMetaAndData rightExact = new ValueMetaAndData(new ValueMetaInteger("name1"), 10000L);
+    Condition condition = new Condition("name1", Function.SMALLER, null, rightExact);
+    assertTrue(condition.evaluate(rowMeta, new Object[] {5000L}));
+
+    Condition.CValue rightValue = condition.getRightValue();
+    assertSame(rightValue.getCachedValueMeta(), rightValue.getCachedValueMeta());
+    assertSame(rightValue.getCachedValueData(), rightValue.getCachedValueData());
+    // createValueMeta() must keep handing fresh objects to callers that modify the result.
+    assertNotSame(rightValue.getCachedValueMeta(), rightValue.createValueMeta());
+  }
+
+  @Test
+  public void testConstantRightValueIsRebuiltAfterMutation() throws Exception {
+    IRowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta(new ValueMetaInteger("name1"));
+
+    ValueMetaAndData rightExact = new ValueMetaAndData(new ValueMetaInteger("name1"), 10000L);
+    Condition condition = new Condition("name1", Function.SMALLER, null, rightExact);
+    assertTrue(condition.evaluate(rowMeta, new Object[] {5000L}));
+
+    // Mutating the right value must discard the cache rather than keep comparing against 10000.
+    condition.getRightValue().setText("1000");
+    assertFalse(condition.evaluate(rowMeta, new Object[] {5000L}));
+    assertTrue(condition.evaluate(rowMeta, new Object[] {999L}));
+
+    condition.getRightValue().setNullValue(true);
+    assertFalse(condition.evaluate(rowMeta, new Object[] {999L}));
+  }
+
+  /**
+   * Pins the performance contract itself: evaluate() must hand the same right-side instances to
+   * every row rather than rebuilding them. Asserting on the cache accessors alone is not enough,
+   * because they would keep returning a stable instance even if evaluate() went back to calling
+   * createValueMeta() / createValueData() per row.
+   */
+  @Test
+  public void testEvaluateReusesTheRightValueAcrossRows() throws Exception {
+    CapturingValueMeta leftMeta = new CapturingValueMeta("name1");
+    IRowMeta rowMeta = new RowMeta();
+    rowMeta.addValueMeta(leftMeta);
+
+    ValueMetaAndData rightExact = new ValueMetaAndData(new ValueMetaInteger("name1"), 10000L);
+    Condition condition = new Condition("name1", Function.SMALLER, null, rightExact);
+
+    assertTrue(condition.evaluate(rowMeta, new Object[] {5000L}));
+    assertTrue(condition.evaluate(rowMeta, new Object[] {6000L}));
+
+    assertEquals(2, leftMeta.rightMetas.size());
+    assertSame(leftMeta.rightMetas.get(0), leftMeta.rightMetas.get(1));
+    assertSame(leftMeta.rightData.get(0), leftMeta.rightData.get(1));
+  }
+
+  /** Records the right-side metadata and data that evaluate() passes into the left value. */
+  private static final class CapturingValueMeta extends ValueMetaInteger {
+    private final List<IValueMeta> rightMetas = new ArrayList<>();
+    private final List<Object> rightData = new ArrayList<>();
+
+    private CapturingValueMeta(String name) {
+      super(name);
+    }
+
+    @Override
+    public int compare(Object data1, IValueMeta meta2, Object data2) throws HopValueException {
+      rightMetas.add(meta2);
+      rightData.add(data2);
+      return super.compare(data1, meta2, data2);
+    }
+  }
+
+  /**
+   * One Condition is shared by every copy of a transform, so the cached right value has to tolerate
+   * concurrent first access. This exercises the accessors directly rather than evaluate(), which
+   * writes leftFieldIndex, rightFieldIndex, rightValue, inList and rightString on the shared
+   * instance and so is not thread safe regardless of any caching.
+   */
+  @Test
+  public void testCachedRightValueTolerateConcurrentColdAccess() throws Exception {
+    ValueMetaAndData rightExact = new ValueMetaAndData(new ValueMetaInteger("name1"), 10000L);
+    Condition condition = new Condition("name1", Function.SMALLER, null, rightExact);
+    Condition.CValue rightValue = condition.getRightValue();
+
+    int threads = 8;
+    CountDownLatch readySetGo = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    List<Future<?>> results = new ArrayList<>();
+    try {
+      for (int i = 0; i < threads; i++) {
+        results.add(
+            pool.submit(
+                () -> {
+                  readySetGo.await();
+                  for (int n = 0; n < 500; n++) {
+                    assertNotNull(rightValue.getCachedValueMeta());
+                    assertEquals(Long.valueOf(10000L), rightValue.getCachedValueData());
+                  }
+                  return null;
+                }));
+      }
+      // Release every thread onto a cold cache at the same moment.
+      readySetGo.countDown();
+      for (Future<?> result : results) {
+        // Rethrows any assertion failure or exception raised on a worker thread.
+        result.get(30, TimeUnit.SECONDS);
+      }
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   @Test

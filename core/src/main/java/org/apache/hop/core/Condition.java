@@ -29,7 +29,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang.StringUtils;
@@ -356,12 +358,12 @@ public class Condition implements Cloneable {
 
         // Get field index: right value
         //
-        IValueMeta fieldMeta2 = rightValue != null ? rightValue.createValueMeta() : null;
+        IValueMeta fieldMeta2 = rightValue != null ? rightValue.getCachedValueMeta() : null;
         // Old metadata contains a right value block without name, type and so on.  This means: no
         // value
         // Removed the name check, old fixed values do not contain a name element causing regression
         Object field2 =
-            rightValue != null && rightFieldIndex == -2 ? rightValue.createValueData() : null;
+            rightValue != null && rightFieldIndex == -2 ? rightValue.getCachedValueData() : null;
         if (field2 == null && rightFieldIndex >= 0) {
           fieldMeta2 = rowMeta.getValueMeta(rightFieldIndex);
           field2 = r[rightFieldIndex];
@@ -794,6 +796,16 @@ public class Condition implements Cloneable {
     @HopMetadataProperty(key = "mask", isExcludedFromInjection = true)
     private String mask;
 
+    /*
+     * DLPX-99491: both createValueMeta() and createValueData() build ValueMeta objects whose
+     * constructor reads two system properties, and evaluate() calls them per row. Cache the result
+     * alongside the field values it came from, so any later mutation rebuilds it. Volatile because
+     * one Condition is shared by every copy of a transform.
+     */
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private volatile CachedRightValue cachedRightValue;
+
     public CValue() {}
 
     public CValue(CValue c) {
@@ -859,6 +871,86 @@ public class Condition implements Cloneable {
       stringValueMeta.setConversionMetadata(valueMeta);
 
       return stringValueMeta.convertDataUsingConversionMetaData(val.getValueData());
+    }
+
+    /**
+     * As {@link #createValueMeta()} but built once and shared until a field changes. Intended for
+     * the per-row evaluate() path; callers that may modify the result must keep using
+     * createValueMeta().
+     *
+     * @return The shared value metadata describing the right value of the condition
+     * @throws HopPluginException
+     */
+    IValueMeta getCachedValueMeta() throws HopPluginException {
+      return cached().valueMeta;
+    }
+
+    /**
+     * As {@link #createValueData()} but built once and shared until a field changes. Intended for
+     * the per-row evaluate() path; callers that may modify the result must keep using
+     * createValueData().
+     *
+     * @return The shared converted right value, which may be null
+     * @throws HopException
+     */
+    Object getCachedValueData() throws HopException {
+      CachedRightValue current = cached();
+      if (!current.valueDataBuilt) {
+        current.valueData = createValueData();
+        // Set last: a thread seeing this flag is guaranteed to see the value above.
+        current.valueDataBuilt = true;
+      }
+      return current.valueData;
+    }
+
+    private CachedRightValue cached() throws HopPluginException {
+      CachedRightValue current = cachedRightValue;
+      if (current == null || !current.describes(this)) {
+        current = new CachedRightValue(this, createValueMeta());
+        cachedRightValue = current;
+      }
+      return current;
+    }
+
+    /**
+     * A cached right value together with the field values it was derived from, so that mutating a
+     * CValue - through its setters or through metadata injection - discards it rather than leaving
+     * stale metadata behind. The value data is built on demand because evaluate() only needs it
+     * when the condition has no right field.
+     */
+    private static final class CachedRightValue {
+      private final String name;
+      private final String type;
+      private final String text;
+      private final int length;
+      private final int precision;
+      private final boolean nullValue;
+      private final String mask;
+
+      private final IValueMeta valueMeta;
+      private volatile Object valueData;
+      private volatile boolean valueDataBuilt;
+
+      private CachedRightValue(CValue value, IValueMeta valueMeta) {
+        this.name = value.name;
+        this.type = value.type;
+        this.text = value.text;
+        this.length = value.length;
+        this.precision = value.precision;
+        this.nullValue = value.nullValue;
+        this.mask = value.mask;
+        this.valueMeta = valueMeta;
+      }
+
+      private boolean describes(CValue value) {
+        return length == value.length
+            && precision == value.precision
+            && nullValue == value.nullValue
+            && Objects.equals(name, value.name)
+            && Objects.equals(type, value.type)
+            && Objects.equals(text, value.text)
+            && Objects.equals(mask, value.mask);
+      }
     }
   }
 
