@@ -32,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.apache.hop.core.exception.HopValueException;
 import org.apache.hop.core.row.IRowMeta;
 import org.apache.hop.core.row.IValueMeta;
@@ -143,6 +144,29 @@ public class ConditionTest {
 
     condition.getRightValue().setNullValue(true);
     assertFalse(condition.evaluate(rowMeta, new Object[] {999L}));
+
+    /*
+     * Changing name, length, precision or mask does not alter whether 5000 < 10000 - so assert
+     * that each one on its own replaces the cached instance.
+     */
+    Condition.CValue rightValue = condition.getRightValue();
+    assertCacheRebuilt("name", rightValue, value -> value.setName("other"));
+    assertCacheRebuilt("type", rightValue, value -> value.setType("String"));
+    assertCacheRebuilt("text", rightValue, value -> value.setText("77"));
+    assertCacheRebuilt("length", rightValue, value -> value.setLength(10));
+    assertCacheRebuilt("precision", rightValue, value -> value.setPrecision(2));
+    assertCacheRebuilt("nullValue", rightValue, value -> value.setNullValue(false));
+    assertCacheRebuilt("mask", rightValue, value -> value.setMask("#.##"));
+  }
+
+  private void assertCacheRebuilt(
+      String field, Condition.CValue value, Consumer<Condition.CValue> mutation) throws Exception {
+    IValueMeta cachedBefore = value.getCachedValueMeta();
+    mutation.accept(value);
+    assertNotSame(
+        "changing " + field + " must invalidate the cached right value",
+        cachedBefore,
+        value.getCachedValueMeta());
   }
 
   /**
@@ -198,6 +222,7 @@ public class ConditionTest {
     Condition.CValue rightValue = condition.getRightValue();
 
     int threads = 8;
+    CountDownLatch allArrived = new CountDownLatch(threads);
     CountDownLatch readySetGo = new CountDownLatch(1);
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     List<Future<?>> results = new ArrayList<>();
@@ -206,6 +231,7 @@ public class ConditionTest {
         results.add(
             pool.submit(
                 () -> {
+                  allArrived.countDown();
                   readySetGo.await();
                   for (int n = 0; n < 500; n++) {
                     assertNotNull(rightValue.getCachedValueMeta());
@@ -214,7 +240,9 @@ public class ConditionTest {
                   return null;
                 }));
       }
-      // Release every thread onto a cold cache at the same moment.
+      // Pool threads start lazily, so wait until every worker is parked on the start gate before
+      // opening it. Otherwise a late starter would find the cache already warm.
+      assertTrue("all workers should reach the start gate", allArrived.await(30, TimeUnit.SECONDS));
       readySetGo.countDown();
       for (Future<?> result : results) {
         // Rethrows any assertion failure or exception raised on a worker thread.

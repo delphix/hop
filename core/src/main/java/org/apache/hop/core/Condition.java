@@ -797,10 +797,8 @@ public class Condition implements Cloneable {
     private String mask;
 
     /*
-     * DLPX-99491: both createValueMeta() and createValueData() build ValueMeta objects whose
-     * constructor reads two system properties, and evaluate() calls them per row. Cache the result
-     * alongside the field values it came from, so any later mutation rebuilds it. Volatile because
-     * one Condition is shared by every copy of a transform.
+     * Cache the result alongside the field values it came from, so any later mutation rebuilds it.
+     * Volatile because one Condition is shared by every copy of a transform.
      */
     @Getter(AccessLevel.NONE)
     @Setter(AccessLevel.NONE)
