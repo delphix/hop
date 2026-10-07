@@ -24,12 +24,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import org.apache.hop.core.HopClientEnvironment;
+import org.apache.hop.core.exception.HopException;
 import org.apache.hop.core.logging.ILogChannel;
 import org.apache.hop.core.variables.IVariables;
 import org.apache.hop.mongo.MongoDbException;
 import org.apache.hop.mongo.MongoProp;
 import org.apache.hop.mongo.MongoProperties;
 import org.apache.hop.mongo.wrapper.MongoClientWrapper;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -42,6 +45,16 @@ class MongoDbConnectionTest {
   @Mock private MongoClientWrapper wrapper;
 
   private MongoDbConnection connection;
+
+  /*
+   * testCreatePropertiesBuilderWithCredentials resolves a password, which needs Encr initialised.
+   * Nothing else in this class or the sibling mongo tests does that, so the test only passed when
+   * an earlier class in the same JVM happened to initialise it. init() is idempotent.
+   */
+  @BeforeAll
+  static void initHopEnvironment() throws HopException {
+    HopClientEnvironment.init();
+  }
 
   @BeforeEach
   void setUp() {
