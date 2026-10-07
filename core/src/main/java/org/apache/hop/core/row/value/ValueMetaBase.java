@@ -221,6 +221,7 @@ public class ValueMetaBase implements IValueMeta {
   protected boolean dateFormatLenient;
   protected boolean lenientStringToNumber;
   protected boolean emptyStringAndNullAreDifferent;
+  protected boolean ignoreTimezone;
 
   @JsonIgnore protected SimpleDateFormat dateFormat;
   @JsonIgnore protected boolean dateFormatChanged;
@@ -335,6 +336,9 @@ public class ValueMetaBase implements IValueMeta {
     this.emptyStringAndNullAreDifferent =
         convertStringToBoolean(
             Const.NVL(System.getProperty(Const.HOP_EMPTY_STRING_DIFFERS_FROM_NULL, "N"), "N"));
+    this.ignoreTimezone =
+        convertStringToBoolean(
+            Const.NVL(System.getProperty(Const.HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE, "N"), "N"));
 
     this.comparator = comparator;
     determineSingleByteEncoding();
@@ -481,6 +485,7 @@ public class ValueMetaBase implements IValueMeta {
         && dateFormatLenient == that.dateFormatLenient
         && lenientStringToNumber == that.lenientStringToNumber
         && emptyStringAndNullAreDifferent == that.emptyStringAndNullAreDifferent
+        && ignoreTimezone == that.ignoreTimezone
         && Objects.equals(name, that.name)
         && Objects.equals(conversionMask, that.conversionMask)
         && Objects.equals(stringEncoding, that.stringEncoding)
@@ -522,7 +527,8 @@ public class ValueMetaBase implements IValueMeta {
             dateFormatTimeZone,
             dateFormatLenient,
             lenientStringToNumber,
-            emptyStringAndNullAreDifferent);
+            emptyStringAndNullAreDifferent,
+            ignoreTimezone);
     result = 31 * result + Arrays.hashCode(index);
     return result;
   }
@@ -5851,7 +5857,7 @@ public class ValueMetaBase implements IValueMeta {
                 // is not yet implemented
                 preparedStatement.setDate(index, ddate);
               } else {
-                if (this.getDateFormatTimeZone() == null) {
+                if (ignoreTimezone || this.getDateFormatTimeZone() == null) {
                   preparedStatement.setDate(index, ddate);
                 } else {
                   preparedStatement.setDate(
@@ -5868,7 +5874,7 @@ public class ValueMetaBase implements IValueMeta {
                   // is not yet implemented
                   preparedStatement.setTimestamp(index, timestamp);
                 } else {
-                  if (this.getDateFormatTimeZone() == null) {
+                  if (ignoreTimezone || this.getDateFormatTimeZone() == null) {
                     preparedStatement.setTimestamp(index, timestamp);
                   } else {
                     preparedStatement.setTimestamp(
@@ -5884,7 +5890,7 @@ public class ValueMetaBase implements IValueMeta {
                   // is not yet implemented
                   preparedStatement.setTimestamp(index, sdate);
                 } else {
-                  if (this.getDateFormatTimeZone() == null) {
+                  if (ignoreTimezone || this.getDateFormatTimeZone() == null) {
                     preparedStatement.setTimestamp(index, sdate);
                   } else {
                     preparedStatement.setTimestamp(

@@ -119,6 +119,7 @@ public class RestoreHopEnvironment extends ExternalResource {
     System.clearProperty(Const.HOP_DEFAULT_DATE_FORMAT);
     System.clearProperty(Const.HOP_DEFAULT_TIMESTAMP_FORMAT);
     System.clearProperty(Const.HOP_EMPTY_STRING_DIFFERS_FROM_NULL);
+    System.clearProperty(Const.HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE);
 
     defaultInit();
   }
