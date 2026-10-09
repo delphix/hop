@@ -126,6 +126,7 @@ public class RestoreHopEnvironmentExtension implements BeforeAllCallback, AfterA
     System.clearProperty(Const.HOP_DEFAULT_DATE_FORMAT);
     System.clearProperty(Const.HOP_DEFAULT_TIMESTAMP_FORMAT);
     System.clearProperty(Const.HOP_EMPTY_STRING_DIFFERS_FROM_NULL);
+    System.clearProperty(Const.HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE);
 
     try {
       defaultInit();

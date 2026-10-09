@@ -20,6 +20,7 @@ package org.apache.hop.core.row.value;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
+import org.apache.hop.core.Const;
 import org.apache.hop.core.database.BaseDatabaseMeta;
 import org.apache.hop.core.database.DatabaseMeta;
 import org.apache.hop.core.database.IDatabase;
@@ -37,6 +39,7 @@ import org.apache.hop.core.row.IRowMeta;
 import org.apache.hop.core.row.IValueMeta;
 import org.apache.hop.core.row.RowMeta;
 import org.apache.hop.junit.rules.RestoreHopEnvironment;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -59,6 +62,11 @@ public class ValueMetaBaseSetPreparedStmntValueTest {
     ps = mock(PreparedStatement.class);
     date = new Date(System.currentTimeMillis());
     ts = new Timestamp(System.currentTimeMillis());
+  }
+
+  @After
+  public void tearDown() {
+    System.clearProperty(Const.HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE);
   }
 
   @Test
@@ -98,5 +106,28 @@ public class ValueMetaBaseSetPreparedStmntValueTest {
     valueMeta.setStorageType(IValueMeta.STORAGE_TYPE_NORMAL);
 
     verify(ps).setTimestamp(eq(1), any(Timestamp.class), any(Calendar.class));
+  }
+
+  @Test
+  public void testTimestampWithIgnoreTimezoneSkipsCalendarOverload() throws Exception {
+    System.setProperty(Const.HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE, "Y");
+
+    ValueMetaBase valueMeta = new ValueMetaDate("");
+    valueMeta.setPreparedStatementValue(dbMeta, ps, 1, ts);
+
+    verify(ps).setTimestamp(eq(1), any(Timestamp.class));
+    verify(ps, never()).setTimestamp(eq(1), any(Timestamp.class), any(Calendar.class));
+  }
+
+  @Test
+  public void testDateWithIgnoreTimezoneSkipsCalendarOverload() throws Exception {
+    System.setProperty(Const.HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE, "Y");
+
+    ValueMetaBase valueMeta = new ValueMetaDate("");
+    valueMeta.setPrecision(1);
+    valueMeta.setPreparedStatementValue(dbMeta, ps, 1, date);
+
+    verify(ps).setDate(eq(1), any(java.sql.Date.class));
+    verify(ps, never()).setDate(eq(1), any(java.sql.Date.class), any(Calendar.class));
   }
 }

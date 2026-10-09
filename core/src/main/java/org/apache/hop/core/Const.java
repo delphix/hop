@@ -466,6 +466,18 @@ public class Const {
   public static final String HOP_LENIENT_STRING_TO_NUMBER_CONVERSION =
       "HOP_LENIENT_STRING_TO_NUMBER_CONVERSION";
 
+  /*
+   * Restore the flag HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE dropped from upstream ValueMetaBase during
+   * the 1.2.0 -> 2.x migration. See DLPX-87054.
+   */
+  /** Systemwide flag to ignore timezone while writing date/timestamp value to the database. */
+  @Variable(
+      value = "N",
+      description =
+          "System wide flag to ignore timezone while writing date/timestamp value to the database. Needed for Teradata, whose JDBC driver assigns a different SQL type to timestamp parameters bound via the Calendar-aware PreparedStatement overload, which breaks batch inserts mixing null and non-null rows for the same column.")
+  public static final String HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE =
+      "HOP_COMPATIBILITY_DB_IGNORE_TIMEZONE";
+
   /**
    * You can use this variable to speed up hostname lookup. Hostname lookup is performed by Hop so
    * that it is capable of logging the server on which a workflow or pipeline is executed.
