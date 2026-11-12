@@ -22,7 +22,7 @@ import static org.apache.xbean.asm9.Opcodes.ACC_SUPER;
 import static org.apache.xbean.asm9.Opcodes.ALOAD;
 import static org.apache.xbean.asm9.Opcodes.ARETURN;
 import static org.apache.xbean.asm9.Opcodes.IFNONNULL;
-import static org.apache.xbean.asm9.Opcodes.V20;
+import static org.apache.xbean.asm9.Opcodes.V17;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,7 +44,7 @@ class FunctionGenerator {
 
   static byte[] generateClass() {
     ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
-    cw.visit(V20, ACC_PUBLIC | ACC_SUPER, INTERNAL_CLASS_NAME, null, "java/lang/Object", null);
+    cw.visit(V17, ACC_PUBLIC | ACC_SUPER, INTERNAL_CLASS_NAME, null, "java/lang/Object", null);
 
     generateNvlMethod(cw);
 

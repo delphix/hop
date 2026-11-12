@@ -80,7 +80,7 @@ public final class ClassLoaderScanner {
 
     final var aggregated =
         new FilteredArchive(
-            archives.size() == 1 ? archives.getFirst() : new CompositeArchive(archives),
+            archives.size() == 1 ? archives.get(0) : new CompositeArchive(archives),
             Filters.packages(packageName));
     try {
       // todo: review if we try to check if META-INF/jandex.idx exists in the jar/dir
@@ -90,12 +90,11 @@ public final class ClassLoaderScanner {
       // registration using a maven plugin or CLI to generate the right metadata
       return new AnnotationFinder(aggregated, true).findAnnotatedMethods(annotation);
     } finally {
-      if (aggregated instanceof AutoCloseable a) { // Composite/Jar archives
-        try {
-          a.close();
-        } catch (Exception e) {
-          // no-op, ignored
-        }
+      // FilteredArchive is AutoCloseable and closes the Composite/Jar archives it wraps
+      try {
+        aggregated.close();
+      } catch (Exception e) {
+        // no-op, ignored
       }
     }
   }
