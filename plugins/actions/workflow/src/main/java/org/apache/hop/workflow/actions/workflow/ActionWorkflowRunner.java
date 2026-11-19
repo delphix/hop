@@ -33,7 +33,8 @@ public class ActionWorkflowRunner implements Runnable {
   private Result result;
   private ILogChannel log;
   private int entryNr;
-  private boolean finished;
+  // Read by the parent workflow's thread while it waits for this one.
+  private volatile boolean finished;
 
   /** */
   public ActionWorkflowRunner(
@@ -53,23 +54,33 @@ public class ActionWorkflowRunner implements Runnable {
         return;
       }
       result = workflow.startExecution();
+    } catch (Throwable t) {
+      // DLPX-100160: an Error such as OutOfMemoryError used to end this thread without marking it
+      // finished, so the parent workflow waited for it forever. Fail the action instead.
+      result.setNrErrors(1);
+      result.setResult(false);
+      log.logError(BaseMessages.getString(PKG, "Workflow.Log.ErrorExecWorkflow", t.toString()), t);
     } finally {
-      // Remember the result
-      workflow.setResult(result);
       try {
-        ExtensionPointHandler.callExtensionPoint(
-            log, workflow, HopExtensionPoint.WorkflowFinish.id, workflow);
+        // Remember the result
+        workflow.setResult(result);
+        try {
+          ExtensionPointHandler.callExtensionPoint(
+              log, workflow, HopExtensionPoint.WorkflowFinish.id, workflow);
 
-        // catch more general exception to prevent thread hanging
-      } catch (Exception e) {
-        result.setNrErrors(1);
-        result.setResult(false);
-        log.logError(
-            BaseMessages.getString(PKG, "Action.Log.ErrorExecWorkflow", e.getMessage()), e);
+          // catch more general exception to prevent thread hanging
+        } catch (Exception e) {
+          result.setNrErrors(1);
+          result.setResult(false);
+          log.logError(
+              BaseMessages.getString(PKG, "Action.Log.ErrorExecWorkflow", e.getMessage()), e);
+        }
+        workflow.setFinished(true);
+      } finally {
+        // The parent workflow waits for this flag, so it must be set however this thread ends.
+        finished = true;
       }
-      workflow.setFinished(true);
     }
-    finished = true;
   }
 
   /**
