@@ -71,7 +71,9 @@ public class PipelineTest {
   }
 
   /** Execution of pipeline with no transforms never ends */
-  @Test(timeout = 1000)
+  // DLPX-100160: 1 second was too tight on build VMs, where creating the Mockito spy alone took
+  // that long. A pipeline that never ends still fails this.
+  @Test(timeout = 10000)
   public void pipelineWithNoTransformsIsNotEndless() throws Exception {
     Pipeline pipelineWithNoTransforms = new LocalPipelineEngine(new PipelineMeta());
     pipelineWithNoTransforms = spy(pipelineWithNoTransforms);

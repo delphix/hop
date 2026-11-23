@@ -33,6 +33,7 @@ import org.apache.hop.core.plugins.PluginRegistry;
 import org.apache.hop.core.row.value.ValueMetaFactory;
 import org.apache.hop.core.row.value.ValueMetaPluginType;
 import org.apache.hop.core.row.value.ValueMetaString;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -46,6 +47,13 @@ public class ValueMetaAndDataTest {
   @Before
   public void before() {
     pluginRegistry = Mockito.mock(PluginRegistry.class);
+  }
+
+  @After
+  public void after() {
+    // DLPX-100160: one test swaps the static registry for the mock. Put the real one back so later
+    // tests in the same JVM can still find the value meta plugins.
+    ValueMetaFactory.pluginRegistry = PluginRegistry.getInstance();
   }
 
   @Test

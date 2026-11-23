@@ -40,6 +40,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.hop.core.Const;
+import org.apache.hop.core.HopEnvironment;
 import org.apache.hop.core.encryption.Encr;
 import org.apache.hop.core.encryption.TwoWayPasswordEncoderPluginType;
 import org.apache.hop.core.exception.HopException;
@@ -89,7 +90,10 @@ public class HopServerTest {
 
   @AfterClass
   public static void tearDown() {
-    PluginRegistry.getInstance().reset();
+    // DLPX-100160: reset the whole environment, not only the plugin registry. Otherwise a later
+    // test in the same JVM calls HopEnvironment.init(), which does nothing because the environment
+    // still counts as initialized, and runs with no plugins.
+    HopEnvironment.reset();
   }
 
   @Before
