@@ -33,7 +33,6 @@ public class ActionWorkflowRunner implements Runnable {
   private Result result;
   private ILogChannel log;
   private int entryNr;
-  // Read by the parent workflow's thread while it waits for this one.
   private volatile boolean finished;
 
   /** */
@@ -55,11 +54,18 @@ public class ActionWorkflowRunner implements Runnable {
       }
       result = workflow.startExecution();
     } catch (Throwable t) {
-      // DLPX-100160: an Error such as OutOfMemoryError used to end this thread without marking it
-      // finished, so the parent workflow waited for it forever. Fail the action instead.
-      result.setNrErrors(1);
-      result.setResult(false);
-      log.logError(BaseMessages.getString(PKG, "Workflow.Log.ErrorExecWorkflow", t.toString()), t);
+      result = newErrorResult(result);
+      if (t instanceof OutOfMemoryError) {
+        log.logError("UnexpectedError: ", t);
+      } else {
+        log.logError(
+            BaseMessages.getString(PKG, "Workflow.Log.ErrorExecWorkflow", t.toString()), t);
+      }
+      try {
+        workflow.stopExecution();
+      } catch (Throwable ignored) {
+        // Best effort: the action has already failed.
+      }
     } finally {
       try {
         // Remember the result
@@ -77,10 +83,21 @@ public class ActionWorkflowRunner implements Runnable {
         }
         workflow.setFinished(true);
       } finally {
-        // The parent workflow waits for this flag, so it must be set however this thread ends.
         finished = true;
       }
     }
+  }
+
+  private static Result newErrorResult(Result fallback) {
+    Result errorResult;
+    try {
+      errorResult = new Result();
+    } catch (OutOfMemoryError e) {
+      errorResult = fallback;
+    }
+    errorResult.setNrErrors(1);
+    errorResult.setResult(false);
+    return errorResult;
   }
 
   /**

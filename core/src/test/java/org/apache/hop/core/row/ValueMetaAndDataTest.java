@@ -51,8 +51,6 @@ public class ValueMetaAndDataTest {
 
   @After
   public void after() {
-    // DLPX-100160: one test swaps the static registry for the mock. Put the real one back so later
-    // tests in the same JVM can still find the value meta plugins.
     ValueMetaFactory.pluginRegistry = PluginRegistry.getInstance();
   }
 

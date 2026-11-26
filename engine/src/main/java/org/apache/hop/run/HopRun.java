@@ -44,23 +44,19 @@ public class HopRun extends HopRunBase implements Runnable, IHasHopMetadataProvi
     super();
   }
 
-  // Freed when main fails with an Error, so that reporting it and exiting have heap to work with.
+  // Freed on a fatal error so that reporting it and exiting have heap to work with.
   private static byte[] exitReserve = new byte[1024 * 1024];
 
   public static void main(String[] args) {
     try {
       runAndExit(args);
     } catch (Throwable t) {
-      // DLPX-100160: an Error such as OutOfMemoryError, also one thrown while handling another
-      // error, used to end the main thread without calling System.exit. The remaining non-daemon
-      // threads then kept the JVM running forever.
       exitReserve = null;
       try {
         System.err.println("Fatal error found, something went horribly wrong!");
         t.printStackTrace();
       } finally {
-        // Printing, and even System.exit, can fail with another OutOfMemoryError. halt needs no
-        // heap.
+        // System.exit can itself fail with an OutOfMemoryError; halt needs no heap.
         try {
           System.exit(2);
         } finally {

@@ -19,10 +19,14 @@ package org.apache.hop.workflow.actions.workflow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,19 +46,50 @@ class ActionWorkflowRunnerTest {
 
   @Test
   void outOfMemoryErrorFailsTheActionAndMarksItFinished() {
-    when(workflow.startExecution()).thenThrow(new OutOfMemoryError("Java heap space"));
-    Result result = new Result();
-    result.setResult(true);
-    ActionWorkflowRunner runner = new ActionWorkflowRunner(workflow, result, 0, log);
+    OutOfMemoryError oom = new OutOfMemoryError("Java heap space");
+    when(workflow.startExecution()).thenThrow(oom);
+    Result parentResult = new Result();
+    parentResult.setResult(true);
+    ActionWorkflowRunner runner = new ActionWorkflowRunner(workflow, parentResult, 0, log);
+
+    runner.run();
+
+    assertTrue(runner.isFinished());
+    assertNotSame(parentResult, runner.getResult());
+    assertFalse(runner.getResult().getResult());
+    assertEquals(1, runner.getResult().getNrErrors());
+    assertTrue(parentResult.getResult());
+    assertEquals(0, parentResult.getNrErrors());
+    verify(workflow).stopExecution();
+    verify(workflow).setResult(runner.getResult());
+    verify(workflow).setFinished(true);
+    verify(log).logError(eq("UnexpectedError: "), same(oom));
+  }
+
+  @Test
+  void otherThrowableFailsTheActionWithTheWorkflowErrorMessage() {
+    when(workflow.startExecution()).thenThrow(new IllegalStateException("boom"));
+    ActionWorkflowRunner runner = new ActionWorkflowRunner(workflow, new Result(), 0, log);
 
     runner.run();
 
     assertTrue(runner.isFinished());
     assertFalse(runner.getResult().getResult());
-    assertTrue(runner.getResult().getNrErrors() >= 1);
+    verify(workflow).stopExecution();
+    verify(log).logError(contains("java.lang.IllegalStateException: boom"), any(Throwable.class));
+  }
+
+  @Test
+  void failureToStopTheChildWorkflowStillMarksItFinished() {
+    when(workflow.startExecution()).thenThrow(new OutOfMemoryError("Java heap space"));
+    doThrow(new OutOfMemoryError("again")).when(workflow).stopExecution();
+    ActionWorkflowRunner runner = new ActionWorkflowRunner(workflow, new Result(), 0, log);
+
+    runner.run();
+
+    assertTrue(runner.isFinished());
+    assertFalse(runner.getResult().getResult());
     verify(workflow).setFinished(true);
-    verify(log)
-        .logError(contains("java.lang.OutOfMemoryError: Java heap space"), any(Throwable.class));
   }
 
   @Test

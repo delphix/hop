@@ -90,9 +90,6 @@ public class HopServerTest {
 
   @AfterClass
   public static void tearDown() {
-    // DLPX-100160: reset the whole environment, not only the plugin registry. Otherwise a later
-    // test in the same JVM calls HopEnvironment.init(), which does nothing because the environment
-    // still counts as initialized, and runs with no plugins.
     HopEnvironment.reset();
   }
 
