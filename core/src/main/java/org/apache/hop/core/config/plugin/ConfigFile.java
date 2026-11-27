@@ -87,7 +87,7 @@ public abstract class ConfigFile implements IConfigFile {
   public ConfigFile(String filename, List<DescribedVariable> describedVariables) {
     this();
     setConfigFilename(filename);
-    configMap.put(HOP_VARIABLES_KEY, describedVariables);
+    setDescribedVariables(describedVariables);
   }
 
   @JsonIgnore
@@ -101,6 +101,16 @@ public abstract class ConfigFile implements IConfigFile {
     }
 
     Object variablesObject = configMap.get(HOP_VARIABLES_KEY);
+
+    // The list is stored back below, so from the second call onwards it already holds
+    // DescribedVariable objects. Serialising those to JSON only to parse them straight back would
+    // be pure overhead, and this method sits on the path of every single log message.
+    //
+    if (variablesObject instanceof List<?> describedList
+        && (describedList.isEmpty() || describedList.get(0) instanceof DescribedVariable)) {
+      return (List<DescribedVariable>) variablesObject;
+    }
+
     if (variablesObject != null) {
       try {
         for (Object dvObject : (List) variablesObject) {
@@ -161,7 +171,11 @@ public abstract class ConfigFile implements IConfigFile {
 
   @Override
   public void setDescribedVariables(List<DescribedVariable> describedVariables) {
-    configMap.put(HOP_VARIABLES_KEY, describedVariables);
+    // Kept mutable: getDescribedVariables() hands this very list out and setDescribedVariable()
+    // adds to it.
+    configMap.put(
+        HOP_VARIABLES_KEY,
+        describedVariables == null ? new ArrayList<>() : new ArrayList<>(describedVariables));
   }
 
   /**
