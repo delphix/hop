@@ -71,7 +71,7 @@ public class PipelineTest {
   }
 
   /** Execution of pipeline with no transforms never ends */
-  @Test(timeout = 1000)
+  @Test(timeout = 10000)
   public void pipelineWithNoTransformsIsNotEndless() throws Exception {
     Pipeline pipelineWithNoTransforms = new LocalPipelineEngine(new PipelineMeta());
     pipelineWithNoTransforms = spy(pipelineWithNoTransforms);

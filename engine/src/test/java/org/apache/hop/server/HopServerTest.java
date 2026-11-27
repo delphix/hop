@@ -40,6 +40,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.hop.core.Const;
+import org.apache.hop.core.HopEnvironment;
 import org.apache.hop.core.encryption.Encr;
 import org.apache.hop.core.encryption.TwoWayPasswordEncoderPluginType;
 import org.apache.hop.core.exception.HopException;
@@ -89,7 +90,7 @@ public class HopServerTest {
 
   @AfterClass
   public static void tearDown() {
-    PluginRegistry.getInstance().reset();
+    HopEnvironment.reset();
   }
 
   @Before

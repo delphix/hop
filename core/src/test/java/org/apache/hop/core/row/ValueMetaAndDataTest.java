@@ -33,6 +33,7 @@ import org.apache.hop.core.plugins.PluginRegistry;
 import org.apache.hop.core.row.value.ValueMetaFactory;
 import org.apache.hop.core.row.value.ValueMetaPluginType;
 import org.apache.hop.core.row.value.ValueMetaString;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -46,6 +47,11 @@ public class ValueMetaAndDataTest {
   @Before
   public void before() {
     pluginRegistry = Mockito.mock(PluginRegistry.class);
+  }
+
+  @After
+  public void after() {
+    ValueMetaFactory.pluginRegistry = PluginRegistry.getInstance();
   }
 
   @Test

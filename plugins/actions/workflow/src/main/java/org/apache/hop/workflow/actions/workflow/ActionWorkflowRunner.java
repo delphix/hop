@@ -33,7 +33,7 @@ public class ActionWorkflowRunner implements Runnable {
   private Result result;
   private ILogChannel log;
   private int entryNr;
-  private boolean finished;
+  private volatile boolean finished;
 
   /** */
   public ActionWorkflowRunner(
@@ -53,23 +53,51 @@ public class ActionWorkflowRunner implements Runnable {
         return;
       }
       result = workflow.startExecution();
-    } finally {
-      // Remember the result
-      workflow.setResult(result);
-      try {
-        ExtensionPointHandler.callExtensionPoint(
-            log, workflow, HopExtensionPoint.WorkflowFinish.id, workflow);
-
-        // catch more general exception to prevent thread hanging
-      } catch (Exception e) {
-        result.setNrErrors(1);
-        result.setResult(false);
+    } catch (Throwable t) {
+      result = newErrorResult(result);
+      if (t instanceof OutOfMemoryError) {
+        log.logError("UnexpectedError: ", t);
+      } else {
         log.logError(
-            BaseMessages.getString(PKG, "Action.Log.ErrorExecWorkflow", e.getMessage()), e);
+            BaseMessages.getString(PKG, "Workflow.Log.ErrorExecWorkflow", t.toString()), t);
       }
-      workflow.setFinished(true);
+      try {
+        workflow.stopExecution();
+      } catch (Throwable ignored) {
+        // Best effort: the action has already failed.
+      }
+    } finally {
+      try {
+        // Remember the result
+        workflow.setResult(result);
+        try {
+          ExtensionPointHandler.callExtensionPoint(
+              log, workflow, HopExtensionPoint.WorkflowFinish.id, workflow);
+
+          // catch more general exception to prevent thread hanging
+        } catch (Exception e) {
+          result.setNrErrors(1);
+          result.setResult(false);
+          log.logError(
+              BaseMessages.getString(PKG, "Action.Log.ErrorExecWorkflow", e.getMessage()), e);
+        }
+        workflow.setFinished(true);
+      } finally {
+        finished = true;
+      }
     }
-    finished = true;
+  }
+
+  private static Result newErrorResult(Result fallback) {
+    Result errorResult;
+    try {
+      errorResult = new Result();
+    } catch (OutOfMemoryError e) {
+      errorResult = fallback;
+    }
+    errorResult.setNrErrors(1);
+    errorResult.setResult(false);
+    return errorResult;
   }
 
   /**
